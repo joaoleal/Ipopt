@@ -72,7 +72,7 @@ namespace Ipopt
     const std::vector<Index> constr_metadata = y_c_owner_space_->GetIntegerMetaData("sens_init_constr");
 
     std::vector<Index> retval;
-    for (Index i = 0; i<constr_metadata.size(); ++i) {
+    for (size_t i = 0; i<constr_metadata.size(); ++i) {
       if (constr_metadata[i]!=0) {
 	retval.push_back(n_base+i);
       }
@@ -94,8 +94,8 @@ namespace Ipopt
     append_Index(state,measurement_number);
     append_Index(statevalue,measurement_number);
 
-    const std::vector<Index> idx_ipopt = x_owner_space_->GetIntegerMetaData(state.c_str());
-    const std::vector<Number> val_ipopt = x_owner_space_->GetNumericMetaData(statevalue.c_str());
+    const std::vector<Index>& idx_ipopt = x_owner_space_->GetIntegerMetaData(state);
+    const std::vector<Number>& val_ipopt = x_owner_space_->GetNumericMetaData(statevalue);
 
     SmartPtr<DenseVectorSpace> delta_u_space;
     delta_u_space = new DenseVectorSpace(n_idx_);
@@ -106,7 +106,7 @@ namespace Ipopt
     const Number* u_0_val = dynamic_cast<const DenseVector*>(GetRawPtr(IpData().trial()->x()))->Values();
 
     // Fill up values of delta_u vector
-    for (Index i=0; i<val_ipopt.size(); ++i) {
+    for (size_t i=0; i<val_ipopt.size(); ++i) {
       if (idx_ipopt[i]>0) {
 	du_val[idx_ipopt[i]-1] = val_ipopt[i]-u_0_val[i]; //initial_val[idx_ipopt[i]-1];
 	//du_val[idx_ipopt[i]-1] = val_ipopt[i];
