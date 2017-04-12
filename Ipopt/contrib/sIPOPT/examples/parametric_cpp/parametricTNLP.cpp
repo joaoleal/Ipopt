@@ -16,9 +16,7 @@ using namespace Ipopt;
 /* Constructor */
 ParametricTNLP::ParametricTNLP() :
   nominal_eta1_(5.0),
-  nominal_eta2_(1.0),
-  eta_1_perturbed_value_(4.5),
-  eta_2_perturbed_value_(1.0)
+  nominal_eta2_(1.0)
 {
 }
 
@@ -62,10 +60,14 @@ bool ParametricTNLP::get_bounds_info(Index n, Number* x_l, Number* x_u,
   g_u[1] = 0.0;
 
   // initial value constraints
-  g_l[2] = nominal_eta1_;
-  g_u[2] = nominal_eta1_;
-  g_l[3] = nominal_eta2_;
-  g_u[3] = nominal_eta2_;
+  //g_l[2] = nominal_eta1_;
+  //g_u[2] = nominal_eta1_;
+  //g_l[3] = nominal_eta2_;
+  //g_u[3] = nominal_eta2_;
+  g_l[2] = 0;
+  g_u[2] = 0;
+  g_l[3] = 0;
+  g_u[3] = 0;
 
   return true;
 }
@@ -113,8 +115,10 @@ bool ParametricTNLP::eval_g(Index n, const Number* x, bool new_x, Index m, Numbe
   eta2 = x[4];
   g[0] = 6*x1+3*x2+2*x3-eta1;
   g[1] = eta2*x1+x2-x3-1;
-  g[2] = eta1;
-  g[3] = eta2;
+  //g[2] = eta1;
+  //g[3] = eta2;
+  g[2] = eta1 - nominal_eta1_;
+  g[3] = eta2 - nominal_eta2_;
   return true;
 }
 
@@ -191,13 +195,13 @@ bool ParametricTNLP::eval_h(Index n, const Number* x, bool new_x,
 }
 
 bool ParametricTNLP::get_var_con_metadata(Index n,
-					  StringMetaDataMapType& var_string_md,
-					  IntegerMetaDataMapType& var_integer_md,
-					  NumericMetaDataMapType& var_numeric_md,
-					  Index m,
-					  StringMetaDataMapType& con_string_md,
-					  IntegerMetaDataMapType& con_integer_md,
-					  NumericMetaDataMapType& con_numeric_md)
+                                          StringMetaDataMapType& var_string_md,
+                                          IntegerMetaDataMapType& var_integer_md,
+                                          NumericMetaDataMapType& var_numeric_md,
+                                          Index m,
+                                          StringMetaDataMapType& con_string_md,
+                                          IntegerMetaDataMapType& con_integer_md,
+                                          NumericMetaDataMapType& con_numeric_md)
 {
   /* In this function, the indices for the parametric computations are set.
    * To keep track of the parameters, each parameter gets an index from 1 to n_parameters.
@@ -225,14 +229,6 @@ bool ParametricTNLP::get_var_con_metadata(Index n,
   sens_state_1[4] = 2;
   var_integer_md["sens_state_1"] = sens_state_1;
 
-  /* 3. sens_state_values_1: In this list of Numbers (=doubles), the perturbed
-   *    values for the parameters are set.
-   */
-  std::vector<Number> sens_state_value_1(n,0);
-  sens_state_value_1[3] = eta_1_perturbed_value_;
-  sens_state_value_1[4] = eta_2_perturbed_value_;
-  var_numeric_md["sens_state_value_1"] = sens_state_value_1;
-
   return true;
 }
 
@@ -254,23 +250,35 @@ void ParametricTNLP::finalize_solution(SolverReturn status,
     printf("Error IsValid(x_owner_space) failed\n");
     return;
   }
-  std::string state;
-  std::vector<Number> sens_sol_vec;
-  state = "sens_sol_state_1";
-  sens_sol_vec = x_owner_space->GetNumericMetaData(state.c_str());
 
-  // Print the solution vector
-  printf("\n"
-	 "                Nominal                    Perturbed\n");
-  for (Index k=0; k<(Index) sens_sol_vec.size(); ++k) {
-    printf("x[%3d]   % .23f   % .23f\n", k, x[k], sens_sol_vec[k]);
-  }
+  if (x_owner_space->HasNumericMetaData("sens_state_update_step") &&
+          x_owner_space->GetIntegerMetaData("sens_state_update_step")[0] == 1) {
+    //assert(x_owner_space->HasNumericMetaData("sens_sol_state_1"));
+    std::vector<Number> sens_sol_vec = x_owner_space->GetNumericMetaData("sens_sol_state_1");
 
-  printf("\n**********\n");
-  for (Index k=0; k<m; ++k) {
-    printf("lambda[%3d] (nom)  % .23f \n", k, lambda[k]);
-  }
+    // Print the solution vector
+    printf("\n"
+        "                Nominal                    Perturbed\n");
+    for (Index k=0; k<(Index) sens_sol_vec.size(); ++k) {
+        printf("x[%3d]   % .23f   % .23f\n", k, x[k], sens_sol_vec[k]);
+    }
 
+    printf("\n**********\n");
+    for (Index k=0; k<m; ++k) {
+      printf("lambda[%3d] (nom)  % .23f \n", k, lambda[k]);
+    }
+  } else {
+      // Print the solution vector
+      printf("\n"
+      "                Nominal\n");
+      for (Index k=0; k< n; ++k) {
+          printf("x[%3d]   % .23f\n", k, x[k]);
+      }
+      printf("\n**********\n");
+      for (Index k=0; k<m; ++k) {
+          printf("lambda[%3d] (nom)  % .23f \n", k, lambda[k]);
+      }
+    }
 }
 
 void ParametricTNLP::finalize_metadata(Index n,

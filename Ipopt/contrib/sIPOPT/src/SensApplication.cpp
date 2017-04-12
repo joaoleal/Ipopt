@@ -1,4 +1,5 @@
 // Copyright 2009, 2011 Hans Pirnay
+// Copyright 2017 Ciengis
 // All Rights Reserved.
 // This code is published under the Eclipse Public License.
 //
@@ -13,6 +14,7 @@
 // Ipopt includes
 #include "IpPDSearchDirCalc.hpp"
 #include "IpIpoptAlg.hpp"
+#include "IpDenseVector.hpp"
 
 namespace Ipopt
 {
@@ -21,15 +23,9 @@ namespace Ipopt
 #endif
 
 
-  SensApplication::SensApplication(SmartPtr<Journalist> jnlst,
-				   SmartPtr<OptionsList> options,
-				   SmartPtr<RegisteredOptions> reg_options)
-    :
-    jnlst_(jnlst),
-    options_(options),
-    reg_options_(reg_options),
-    ipopt_retval_(Internal_Error),
-    controller(NULL),
+SensApplication::SensApplication(SmartPtr<Journalist> jnlst,
+                                 SmartPtr<OptionsList> options,
+                                 SmartPtr<RegisteredOptions> reg_options) :
     DirectionalD_X(NULL),
     DirectionalD_L(NULL),
     DirectionalD_Z_L(NULL),
@@ -37,13 +33,17 @@ namespace Ipopt
     SensitivityM_X(NULL),
     SensitivityM_L(NULL),
     SensitivityM_Z_L(NULL),
-    SensitivityM_Z_U(NULL)
-  {
+    SensitivityM_Z_U(NULL),
+    jnlst_(jnlst),
+    options_(options),
+    reg_options_(reg_options),
+    ipopt_retval_(Internal_Error),
+    controller(NULL) {
     DBG_START_METH("SensApplication::SensApplication", dbg_verbosity);
 
     // Initialize Journalist
-    DBG_DO(SmartPtr<Journal> sens_jrnl = jnlst_->AddFileJournal("Sensitivity","sensdebug.out",J_ITERSUMMARY);
-	   sens_jrnl->SetPrintLevel(J_USER1,J_ALL));
+    DBG_DO(SmartPtr<Journal> sens_jrnl = jnlst_->AddFileJournal("Sensitivity", "sensdebug.out", J_ITERSUMMARY);
+           sens_jrnl->SetPrintLevel(J_USER1, J_ALL));
 
   }
 
@@ -153,6 +153,16 @@ namespace Ipopt
   {
     DBG_START_METH("SensApplication::Run", dbg_verbosity);
 
+    if (compute_dsdp_ && !run_sens_) {
+          // cannot compute sensitivities if run_sens is not active.
+          jnlst_->Printf(J_WARNING, J_INITIALIZATION,
+                         "Compute sensitivity matrix was chosed but run_sens is set to no.\nReverting compute sensitivities to no.\n");
+          compute_dsdp_ = false ;
+    }
+
+    /**
+     *
+     */
     SensAlgorithmExitStatus retval = SOLVE_SUCCESS;
 
     bool sens_internal_abort, redhess_internal_abort;
@@ -169,11 +179,11 @@ namespace Ipopt
 
     // Check for perturbation of primal dual system
     Number max_pdpert;
-    if (ipopt_retval_==0 || ipopt_retval_==1) { // otherwise, the values might not be available
+    if (ipopt_retval_ == 0 || ipopt_retval_ == 1) { // otherwise, the values might not be available
       Options()->GetNumericValue("sens_max_pdpert", max_pdpert, "");
       Number pdpert_x, pdpert_s, pdpert_c, pdpert_d;
       ip_data_->getPDPert(pdpert_x, pdpert_s, pdpert_c, pdpert_d);
-      if (Max(pdpert_x, pdpert_s, pdpert_c, pdpert_d)>max_pdpert) {
+        if (Max(pdpert_x, pdpert_s, pdpert_c, pdpert_d) > max_pdpert) {
 	jnlst_->Printf(J_WARNING, J_MAIN, "\n\t--------------= Warning =--------------\nInertia correction of primal dual system is too large for meaningful sIPOPT results.\n"
 		       "\t... aborting computation.\n"
 		       "Set option sens_max_pdpert to a higher value (current: %f) to run sIPOPT algorithm anyway\n", max_pdpert);
@@ -196,18 +206,9 @@ namespace Ipopt
 
       red_hess_calc->ComputeReducedHessian();
     }
-    if (run_sens_ && n_sens_steps_>0 && !sens_internal_abort) {
+    if (run_sens_ && n_sens_steps_ > 0 && !sens_internal_abort) {
       SmartPtr<SensBuilder> schur_builder = new SensBuilder();
       const std::string prefix = ""; // I should be getting this somewhere else...
-      /*
-      SmartPtr<SensAlgorithm> controller = schur_builder->BuildSensAlg(*jnlst_,
-								       *options_,
-								       prefix,
-								       *ip_nlp_,
-								       *ip_data_,
-								       *ip_cq_,
-								       *pd_solver_);
-      */
       controller = schur_builder->BuildSensAlg(*jnlst_,
 					       *options_,
 					       prefix,
@@ -218,9 +219,8 @@ namespace Ipopt
       retval = controller->Run();
 
       if (compute_dsdp_) controller->ComputeSensitivityMatrix();
-    }
-    else if (run_sens_) {
-      if (n_sens_steps_<=0) {
+    } else if (run_sens_) {
+        if (n_sens_steps_ <= 0) {
 	jnlst_->Printf(J_WARNING, J_MAIN, "\n"
 		       "The run_sens option was set to true, but the specified\n"
 		       "number of sensitivity steps was set to zero.\n"
@@ -307,11 +307,28 @@ namespace Ipopt
 		       "See exception message above for details.\n\n");
       }
 
-      ip_nlp_->FinalizeSolution(status,
-				*ip_data_->curr()->x(),
-				*zL, *zU, *c, *d, *yc, *yd,
-				obj, GetRawPtr(ip_data_), GetRawPtr(ip_cq_));
+    SmartPtr<const DenseVectorSpace> x_owner_space_const = dynamic_cast<const DenseVectorSpace*>(GetRawPtr(
+                ip_data_->curr()->x()->OwnerSpace()));
+    DenseVectorSpace& x_owner_space = const_cast<DenseVectorSpace&>(*x_owner_space_const); // hack!!!!
+    std::vector<Index> vInfo(1);
+    try {
+            vInfo[0] = 1; // this is used to notify which type of iteration is being computed
+            x_owner_space.SetIntegerMetaData("sens_state_update_step", vInfo);
+
+            ip_nlp_->FinalizeSolution(status,
+                                      *ip_data_->curr()->x(),
+                                      *zL, *zU, *c, *d, *yc, *yd,
+                                      obj, GetRawPtr(ip_data_), GetRawPtr(ip_cq_));
+
+            vInfo[0] = 0;
+            x_owner_space.SetIntegerMetaData("sens_state_update_step", vInfo);
+    } catch (...) {
+            vInfo[0] = 0;
+            x_owner_space.SetIntegerMetaData("sens_state_update_step", vInfo);
+            throw;
     }
+    }
+
     return retval;
   }
 
@@ -320,31 +337,17 @@ namespace Ipopt
     DBG_START_METH("SensApplication::Initialize", dbg_verbosity);
 
     const std::string prefix = ""; // I should be getting this somewhere else...
+    options_->SetIntegerValue("n_sens_steps", 1);
+    options_->SetStringValueIfUnset("run_sens", "yes");
+    n_sens_steps_ = 1;
+    run_sens_ = true;
 
-    Options()->GetIntegerValue("n_sens_steps",n_sens_steps_, prefix.c_str());
-    Options()->GetBoolValue("run_sens", run_sens_, prefix.c_str());
-    Options()->GetBoolValue("compute_red_hessian", compute_red_hessian_, prefix.c_str());
-    Options()->GetBoolValue("compute_dsdp", compute_dsdp_, prefix.c_str());
-
-    if (compute_dsdp_ && !run_sens_) {
-      // cannot compute sensitivities if run_sens is not active.
-      jnlst_->Printf(J_WARNING, J_INITIALIZATION,
-		     "Compute sensitivity matrix was chosed but run_sens is set to no.\nReverting compute sensitivities to no.\n");
-      compute_dsdp_ = false ;
-    }
-
-    // make sure run_sens and skip_finalize_solution_call are consistent
-    if (run_sens_ || compute_red_hessian_) {
-      Options()->SetStringValue("skip_finalize_solution_call", "yes");
-    }
-    else {
-      Options()->SetStringValue("skip_finalize_solution_call", "no");
-    }
-
+    options_->GetBoolValue("compute_red_hessian", compute_red_hessian_, prefix);
+    options_->GetBoolValue("compute_dsdp", compute_dsdp_, prefix);
   }
 
   void SensApplication::SetIpoptAlgorithmObjects(SmartPtr<IpoptApplication> app_ipopt,
-						 ApplicationReturnStatus ipopt_retval)
+                                               ApplicationReturnStatus ipopt_retval)
   {
     DBG_START_METH("SensApplication::SetIpoptAlgorithmObjects", dbg_verbosity);
 
@@ -381,43 +384,16 @@ namespace Ipopt
 
     options_->GetIntegerValue("n_sens_steps",n_sens_steps_,"");
 
-    // This checking should be rewritten
-    /*    if (false && run_sens_) {
-    // check suffixes
-    std::string state;
-    std::string state_value;
-    const Index* index;
-    const Number* number;
-    Index n_sens_indices, n_this_nmpc_indices;
-    // collect information from suffixes
-    state = "sens_state_1";
-    //index = ampl_tnlp_->get_index_suffix(state.c_str());
-    if (index==NULL) {
-    THROW_EXCEPTION(NMPC_SUFFIX_ERROR, "Suffix sens_state_1 is not set");
-    }
-    n_nmpc_indices = AsIndexSum(ip_data_->curr()->x()->Dim(), index, 1);
-    for (Index i=1; i<=n_sens_steps_; ++i) {
-    state = "sens_state_";
-    state_value = "sens_state_value_";
-    append_Index(state, i);
-    append_Index(state_value, i);
-    //index = ampl_tnlp_->get_index_suffix(state.c_str());
-    if (index==NULL) {
-    std::string msg = "Suffix " + state + " is not set";
-    THROW_EXCEPTION(NMPC_SUFFIX_ERROR, msg);
-    }
-    n_this_nmpc_indices = AsIndexSum(ip_data_->curr()->x()->Dim(), index, 1);
-    if (n_this_nmpc_indices!=n_nmpc_indices) {
-    std::string msg = "Suffix" + state + "does not have the correct number of flags";
-    THROW_EXCEPTION(NMPC_SUFFIX_ERROR, msg);
-    }
-    //number = ampl_tnlp_->get_number_suffix(state_value.c_str());
-    if (number==NULL) {
-    std::string msg = "Suffix " + state_value + " is not set";
-    THROW_EXCEPTION(NMPC_SUFFIX_ERROR, msg);
-    }
-    }
-    } */
+    SmartPtr<const DenseVectorSpace> x_owner_space_const = dynamic_cast<const DenseVectorSpace*>(GetRawPtr(ip_data_->curr()->x()->OwnerSpace()));
+    DenseVectorSpace& x_owner_space = const_cast<DenseVectorSpace&>(*x_owner_space_const); // hack!!!!
+    std::vector<Index> vInfo(1, 0); // this is used to notify which type of iteration is being computed
+    x_owner_space.SetIntegerMetaData("sens_state_update_step", vInfo);
   }
+
+void SensApplication::SetUpdatedParameters(const std::vector<Number>& sens_state_value) {
+    SmartPtr<const DenseVectorSpace> x_owner_space_const = dynamic_cast<const DenseVectorSpace*>(GetRawPtr(ip_data_->curr()->x()->OwnerSpace()));
+    DenseVectorSpace& x_owner_space = const_cast<DenseVectorSpace&>(*x_owner_space_const); // hack!!!!
+    x_owner_space.SetNumericMetaData("sens_state_value_1", sens_state_value);
+}
 
 }

@@ -114,12 +114,9 @@ namespace Ipopt
     //@}
 
 
-    /* Nominal and perturbed parameter values */
+    /* Nominal parameter values */
     Number nominal_eta1_;
     Number nominal_eta2_;
-
-    Number eta_1_perturbed_value_;
-    Number eta_2_perturbed_value_;
   };
 
 }

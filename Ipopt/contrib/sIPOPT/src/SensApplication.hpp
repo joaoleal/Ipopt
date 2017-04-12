@@ -31,7 +31,7 @@ namespace Ipopt
 		    SmartPtr<OptionsList> options,
 		    SmartPtr<RegisteredOptions> reg_options);
 
-    ~SensApplication();
+    virtual ~SensApplication();
 
     static void RegisterOptions(SmartPtr<RegisteredOptions> roptions);
 
@@ -40,7 +40,9 @@ namespace Ipopt
     void Initialize();
 
     void SetIpoptAlgorithmObjects(SmartPtr<IpoptApplication> app_ipopt,
-				  ApplicationReturnStatus ipopt_retval);
+                                  ApplicationReturnStatus ipopt_retval);
+
+    void SetUpdatedParameters(const std::vector<Number>& sens_state_value);
 
     SmartPtr<Journalist> Jnlst()
     {
@@ -92,15 +94,15 @@ namespace Ipopt
     /* place holders to keep the values of the directional derivatives for each type of variable */
     Number *DirectionalD_X ;
     Number *DirectionalD_L ;
-    Number *DirectionalD_Z_U ;
     Number *DirectionalD_Z_L ;
+    Number *DirectionalD_Z_U ;
 
 
     /* place holders to keep the values of ds/dp for each type of variable */
     Number *SensitivityM_X ;
     Number *SensitivityM_L ;
-    Number *SensitivityM_Z_U ;
     Number *SensitivityM_Z_L ;
+    Number *SensitivityM_Z_U ;
 
   private:
 
