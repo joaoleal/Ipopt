@@ -445,4 +445,20 @@ SensApplication::SensApplication(SmartPtr<Journalist> jnlst,
 
   }
 
+  bool SensApplication::IsParametersLocationDefined() const {
+    if (IsNull(ip_data_)) {
+      return false;
+    }
+
+    if (IsNull(ip_data_->curr())) {
+      return false;
+    }
+
+    SmartPtr<const DenseVectorSpace> x_owner_space = dynamic_cast<const DenseVectorSpace*>(GetRawPtr(ip_data_->curr()->x()->OwnerSpace()));
+    SmartPtr<const DenseVectorSpace> y_c_owner_space = dynamic_cast<const DenseVectorSpace*>(GetRawPtr(ip_data_->curr()->y_c()->OwnerSpace()));
+
+    return x_owner_space->HasIntegerMetaData("sens_state_1") &&
+            y_c_owner_space->HasIntegerMetaData("sens_init_constr");
+  }
+
 }
