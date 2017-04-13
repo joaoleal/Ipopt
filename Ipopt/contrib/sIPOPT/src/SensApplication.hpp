@@ -42,6 +42,9 @@ namespace Ipopt
     void SetIpoptAlgorithmObjects(SmartPtr<IpoptApplication> app_ipopt,
                                   ApplicationReturnStatus ipopt_retval);
 
+    void SetParametersLocation(const std::vector<Index>& sens_state,
+                               const std::vector<Index>& sens_init_constr);
+
     void SetUpdatedParameters(const std::vector<Number>& sens_state_value);
 
     SmartPtr<Journalist> Jnlst()

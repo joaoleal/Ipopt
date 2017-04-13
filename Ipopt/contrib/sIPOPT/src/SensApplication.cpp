@@ -153,11 +153,16 @@ SensApplication::SensApplication(SmartPtr<Journalist> jnlst,
   {
     DBG_START_METH("SensApplication::Run", dbg_verbosity);
 
+    if (IsNull(ip_data_)) {
+      jnlst_->Printf(J_ERROR, J_MAIN, "sIPOPT: IPOPT algorithm objects have not been provided to sIPOPT.\n");
+      return FATAL_ERROR;
+    }
+
     if (compute_dsdp_ && !run_sens_) {
-          // cannot compute sensitivities if run_sens is not active.
-          jnlst_->Printf(J_WARNING, J_INITIALIZATION,
-                         "Compute sensitivity matrix was chosed but run_sens is set to no.\nReverting compute sensitivities to no.\n");
-          compute_dsdp_ = false ;
+      // cannot compute sensitivities if run_sens is not active.
+      jnlst_->Printf(J_WARNING, J_INITIALIZATION,
+                     "Compute sensitivity matrix was enabled but run_sens is set to no.\nReverting compute sensitivities to no.\n");
+      compute_dsdp_ = false;
     }
 
     /**
@@ -183,26 +188,45 @@ SensApplication::SensApplication(SmartPtr<Journalist> jnlst,
       Options()->GetNumericValue("sens_max_pdpert", max_pdpert, "");
       Number pdpert_x, pdpert_s, pdpert_c, pdpert_d;
       ip_data_->getPDPert(pdpert_x, pdpert_s, pdpert_c, pdpert_d);
-        if (Max(pdpert_x, pdpert_s, pdpert_c, pdpert_d) > max_pdpert) {
-	jnlst_->Printf(J_WARNING, J_MAIN, "\n\t--------------= Warning =--------------\nInertia correction of primal dual system is too large for meaningful sIPOPT results.\n"
-		       "\t... aborting computation.\n"
-		       "Set option sens_max_pdpert to a higher value (current: %f) to run sIPOPT algorithm anyway\n", max_pdpert);
-	sens_internal_abort = true;
-	redhess_internal_abort = true;
+      if (Max(pdpert_x, pdpert_s, pdpert_c, pdpert_d) > max_pdpert) {
+        jnlst_->Printf(J_WARNING, J_MAIN,
+                       "\n"
+                       "\t--------------= Warning =--------------\n"
+                       "Inertia correction of primal dual system is too large for meaningful sIPOPT results.\n"
+                       "\t... aborting computation.\n"
+                       "Set option sens_max_pdpert to a higher value (current: %f) to run sIPOPT algorithm anyway\n",
+                       max_pdpert);
+        sens_internal_abort = true;
+        redhess_internal_abort = true;
       }
     }
 
+    if (IsNull(ip_data_->curr())) {
+      jnlst_->Printf(J_ERROR, J_MAIN, "sIPOPT: IPOPT must be called before sIPOPT.\n\n");
+      return FATAL_ERROR;
+    }
+
+    SmartPtr<const DenseVectorSpace> y_c_owner_space_const = dynamic_cast<const DenseVectorSpace*>(GetRawPtr(ip_data_->curr()->y_c()->OwnerSpace()));
+    SmartPtr<const DenseVectorSpace> x_owner_space_const = dynamic_cast<const DenseVectorSpace*>(GetRawPtr(ip_data_->curr()->x()->OwnerSpace()));
+
+    if (!y_c_owner_space_const->HasIntegerMetaData("sens_init_constr")) {
+      jnlst_->Printf(J_ERROR, J_MAIN, "sIPOPT: Constraint indices for the initial value of parameters were not defined.\n\n");
+      return FATAL_ERROR;
+    } else if (!x_owner_space_const->HasIntegerMetaData("sens_state_1")) {
+      jnlst_->Printf(J_ERROR, J_MAIN, "sIPOPT: Parameter indices were not defined.\n\n");
+      return FATAL_ERROR;
+    }
 
     if (compute_red_hessian_ && !redhess_internal_abort) {
       SmartPtr<SensBuilder> schur_builder = new SensBuilder();
       const std::string prefix = ""; // I should be getting this somewhere else...
       SmartPtr<ReducedHessianCalculator> red_hess_calc = schur_builder->BuildRedHessCalc(*jnlst_,
-											 *options_,
-											 prefix,
-											 *ip_nlp_,
-											 *ip_data_,
-											 *ip_cq_,
-											 *pd_solver_);
+                                                                                         *options_,
+                                                                                         prefix,
+                                                                                         *ip_nlp_,
+                                                                                         *ip_data_,
+                                                                                         *ip_cq_,
+                                                                                         *pd_solver_);
 
       red_hess_calc->ComputeReducedHessian();
     }
@@ -210,21 +234,21 @@ SensApplication::SensApplication(SmartPtr<Journalist> jnlst,
       SmartPtr<SensBuilder> schur_builder = new SensBuilder();
       const std::string prefix = ""; // I should be getting this somewhere else...
       controller = schur_builder->BuildSensAlg(*jnlst_,
-					       *options_,
-					       prefix,
-					       *ip_nlp_,
-					       *ip_data_,
-					       *ip_cq_,
-					       *pd_solver_);
+                                               *options_,
+                                               prefix,
+                                               *ip_nlp_,
+                                               *ip_data_,
+                                               *ip_cq_,
+                                               *pd_solver_);
       retval = controller->Run();
 
       if (compute_dsdp_) controller->ComputeSensitivityMatrix();
     } else if (run_sens_) {
-        if (n_sens_steps_ <= 0) {
-	jnlst_->Printf(J_WARNING, J_MAIN, "\n"
-		       "The run_sens option was set to true, but the specified\n"
-		       "number of sensitivity steps was set to zero.\n"
-		       "Computation is aborted.\n\n");
+      if (n_sens_steps_ <= 0) {
+        jnlst_->Printf(J_WARNING, J_MAIN, "\n"
+                "The run_sens option was set to true, but the specified\n"
+                "number of sensitivity steps was set to zero.\n"
+                "Computation is aborted.\n\n");
       }
     }
 
@@ -233,17 +257,17 @@ SensApplication::SensApplication(SmartPtr<Journalist> jnlst,
       // point pointers to sensitivity vectors...
       // only if controller (sens_app) is created
       if (NULL != GetRawPtr(controller)) {
-	DirectionalD_X = controller->DirectionalD_X_ ;
-	DirectionalD_L = controller->DirectionalD_L_ ;
-	DirectionalD_Z_L = controller->DirectionalD_Z_L_;
-	DirectionalD_Z_U = controller->DirectionalD_Z_U_ ;
-	
-	if (compute_dsdp_) {
-	  SensitivityM_X = controller->SensitivityM_X_ ;
-	  SensitivityM_L = controller->SensitivityM_L_ ;
-	  SensitivityM_Z_L = controller->SensitivityM_Z_L_;
-	  SensitivityM_Z_U = controller->SensitivityM_Z_U_ ;
-	}
+        DirectionalD_X = controller->DirectionalD_X_;
+        DirectionalD_L = controller->DirectionalD_L_;
+        DirectionalD_Z_L = controller->DirectionalD_Z_L_;
+        DirectionalD_Z_U = controller->DirectionalD_Z_U_;
+
+        if (compute_dsdp_) {
+          SensitivityM_X = controller->SensitivityM_X_;
+          SensitivityM_L = controller->SensitivityM_L_;
+          SensitivityM_Z_L = controller->SensitivityM_Z_L_;
+          SensitivityM_Z_U = controller->SensitivityM_Z_U_;
+        }
       }
       SmartPtr<const Vector> c;
       SmartPtr<const Vector> d;
@@ -254,79 +278,77 @@ SensApplication::SensApplication(SmartPtr<Journalist> jnlst,
       Number obj = 0.;
 
       switch (status) {
-      case SUCCESS:
-	/*c = ip_cq_->curr_c();
-	  d = ip_cq_->curr_d();
-	  obj = ip_cq_->curr_f();
-	  zL = ip_data_->curr()->z_L();
-	  zU = ip_data_->curr()->z_U();
-	  yc = ip_data_->curr()->y_c();
-	  yd = ip_data_->curr()->y_d();*/
-      case MAXITER_EXCEEDED:
-      case STOP_AT_TINY_STEP:
-      case STOP_AT_ACCEPTABLE_POINT:
-      case LOCAL_INFEASIBILITY:
-      case USER_REQUESTED_STOP:
-      case FEASIBLE_POINT_FOUND:
-      case DIVERGING_ITERATES:
-      case RESTORATION_FAILURE:
-      case ERROR_IN_STEP_COMPUTATION:
-	c = ip_cq_->curr_c();
-	d = ip_cq_->curr_d();
-	obj = ip_cq_->curr_f();
-	zL = ip_data_->curr()->z_L();
-	zU = ip_data_->curr()->z_U();
-	yc = ip_data_->curr()->y_c();
-	yd = ip_data_->curr()->y_d();
-	break;
-      default:
-	SmartPtr<Vector> tmp = ip_data_->curr()->y_c()->MakeNew();
-	tmp->Set(0.);
-	c = ConstPtr(tmp);
-	yc = ConstPtr(tmp);
-	tmp = ip_data_->curr()->y_d()->MakeNew();
-	tmp->Set(0.);
-	d = ConstPtr(tmp);
-	yd = ConstPtr(tmp);
-	tmp = ip_data_->curr()->z_L()->MakeNew();
-	tmp->Set(0.);
-	zL = ConstPtr(tmp);
-	tmp = ip_data_->curr()->z_U()->MakeNew();
-	tmp->Set(0.);
-	zU = ConstPtr(tmp);
+        case SUCCESS:
+          /*c = ip_cq_->curr_c();
+            d = ip_cq_->curr_d();
+            obj = ip_cq_->curr_f();
+            zL = ip_data_->curr()->z_L();
+            zU = ip_data_->curr()->z_U();
+            yc = ip_data_->curr()->y_c();
+            yd = ip_data_->curr()->y_d();*/
+        case MAXITER_EXCEEDED:
+        case STOP_AT_TINY_STEP:
+        case STOP_AT_ACCEPTABLE_POINT:
+        case LOCAL_INFEASIBILITY:
+        case USER_REQUESTED_STOP:
+        case FEASIBLE_POINT_FOUND:
+        case DIVERGING_ITERATES:
+        case RESTORATION_FAILURE:
+        case ERROR_IN_STEP_COMPUTATION:
+          c = ip_cq_->curr_c();
+          d = ip_cq_->curr_d();
+          obj = ip_cq_->curr_f();
+          zL = ip_data_->curr()->z_L();
+          zU = ip_data_->curr()->z_U();
+          yc = ip_data_->curr()->y_c();
+          yd = ip_data_->curr()->y_d();
+          break;
+        default:
+          SmartPtr<Vector> tmp = ip_data_->curr()->y_c()->MakeNew();
+          tmp->Set(0.);
+          c = ConstPtr(tmp);
+          yc = ConstPtr(tmp);
+          tmp = ip_data_->curr()->y_d()->MakeNew();
+          tmp->Set(0.);
+          d = ConstPtr(tmp);
+          yd = ConstPtr(tmp);
+          tmp = ip_data_->curr()->z_L()->MakeNew();
+          tmp->Set(0.);
+          zL = ConstPtr(tmp);
+          tmp = ip_data_->curr()->z_U()->MakeNew();
+          tmp->Set(0.);
+          zU = ConstPtr(tmp);
       }
 
       if (compute_red_hessian_ && redhess_internal_abort) {
-	jnlst_->Printf(J_WARNING, J_MAIN, "\nReduced hessian was not computed "
-		       "because an error occured.\n"
-		       "See exception message above for details.\n\n");
+        jnlst_->Printf(J_WARNING, J_MAIN, "\nReduced hessian was not computed "
+                "because an error occured.\n"
+                "See exception message above for details.\n\n");
       }
       if (run_sens_ && sens_internal_abort) {
-	jnlst_->Printf(J_WARNING, J_MAIN, "\nsIPOPT was not called "
-		       "because an error occured.\n"
-		       "See exception message above for details.\n\n");
+        jnlst_->Printf(J_WARNING, J_MAIN, "\nsIPOPT was not called "
+                "because an error occured.\n"
+                "See exception message above for details.\n\n");
       }
 
-    SmartPtr<const DenseVectorSpace> x_owner_space_const = dynamic_cast<const DenseVectorSpace*>(GetRawPtr(
-                ip_data_->curr()->x()->OwnerSpace()));
-    DenseVectorSpace& x_owner_space = const_cast<DenseVectorSpace&>(*x_owner_space_const); // hack!!!!
-    std::vector<Index> vInfo(1);
-    try {
-            vInfo[0] = 1; // this is used to notify which type of iteration is being computed
-            x_owner_space.SetIntegerMetaData("sens_state_update_step", vInfo);
+      DenseVectorSpace& x_owner_space = const_cast<DenseVectorSpace&>(*x_owner_space_const); // hack!!!!
+      std::vector<Index> vInfo(1);
+      try {
+        vInfo[0] = 1; // this is used to notify which type of iteration is being computed
+        x_owner_space.SetIntegerMetaData("sens_state_update_step", vInfo);
 
-            ip_nlp_->FinalizeSolution(status,
-                                      *ip_data_->curr()->x(),
-                                      *zL, *zU, *c, *d, *yc, *yd,
-                                      obj, GetRawPtr(ip_data_), GetRawPtr(ip_cq_));
+        ip_nlp_->FinalizeSolution(status,
+                                  *ip_data_->curr()->x(),
+                                  *zL, *zU, *c, *d, *yc, *yd,
+                                  obj, GetRawPtr(ip_data_), GetRawPtr(ip_cq_));
 
-            vInfo[0] = 0;
-            x_owner_space.SetIntegerMetaData("sens_state_update_step", vInfo);
-    } catch (...) {
-            vInfo[0] = 0;
-            x_owner_space.SetIntegerMetaData("sens_state_update_step", vInfo);
-            throw;
-    }
+        vInfo[0] = 0;
+        x_owner_space.SetIntegerMetaData("sens_state_update_step", vInfo);
+      } catch (...) {
+        vInfo[0] = 0;
+        x_owner_space.SetIntegerMetaData("sens_state_update_step", vInfo);
+        throw;
+      }
     }
 
     return retval;
@@ -336,18 +358,18 @@ SensApplication::SensApplication(SmartPtr<Journalist> jnlst,
   {
     DBG_START_METH("SensApplication::Initialize", dbg_verbosity);
 
-    const std::string prefix = ""; // I should be getting this somewhere else...
     options_->SetIntegerValue("n_sens_steps", 1);
     options_->SetStringValueIfUnset("run_sens", "yes");
     n_sens_steps_ = 1;
     run_sens_ = true;
 
+    const std::string prefix = ""; // I should be getting this somewhere else...
     options_->GetBoolValue("compute_red_hessian", compute_red_hessian_, prefix);
     options_->GetBoolValue("compute_dsdp", compute_dsdp_, prefix);
   }
 
   void SensApplication::SetIpoptAlgorithmObjects(SmartPtr<IpoptApplication> app_ipopt,
-                                               ApplicationReturnStatus ipopt_retval)
+                                                 ApplicationReturnStatus ipopt_retval)
   {
     DBG_START_METH("SensApplication::SetIpoptAlgorithmObjects", dbg_verbosity);
 
@@ -382,7 +404,7 @@ SensApplication::SensApplication(SmartPtr<Journalist> jnlst,
     // get NLP
     ip_nlp_ = app_ipopt->IpoptNLPObject();
 
-    options_->GetIntegerValue("n_sens_steps",n_sens_steps_,"");
+    options_->GetIntegerValue("n_sens_steps", n_sens_steps_, "");
 
     SmartPtr<const DenseVectorSpace> x_owner_space_const = dynamic_cast<const DenseVectorSpace*>(GetRawPtr(ip_data_->curr()->x()->OwnerSpace()));
     DenseVectorSpace& x_owner_space = const_cast<DenseVectorSpace&>(*x_owner_space_const); // hack!!!!
@@ -390,10 +412,37 @@ SensApplication::SensApplication(SmartPtr<Journalist> jnlst,
     x_owner_space.SetIntegerMetaData("sens_state_update_step", vInfo);
   }
 
-void SensApplication::SetUpdatedParameters(const std::vector<Number>& sens_state_value) {
+  void SensApplication::SetUpdatedParameters(const std::vector<Number>& sens_state_value) {
+    if (!IsValid(ip_data_->curr())) {
+      jnlst_->Printf(J_ERROR, J_MAIN, "sIPOPT: Aborting sIPOPT computation, because IPOPT did not succeed\n\n");
+    }
+
     SmartPtr<const DenseVectorSpace> x_owner_space_const = dynamic_cast<const DenseVectorSpace*>(GetRawPtr(ip_data_->curr()->x()->OwnerSpace()));
     DenseVectorSpace& x_owner_space = const_cast<DenseVectorSpace&>(*x_owner_space_const); // hack!!!!
     x_owner_space.SetNumericMetaData("sens_state_value_1", sens_state_value);
-}
+  }
+
+  void SensApplication::SetParametersLocation(const std::vector<Index>& sens_state,
+                                              const std::vector<Index>& sens_init_constr) {
+
+    if (IsNull(ip_data_)) {
+      jnlst_->Printf(J_ERROR, J_MAIN, "sIPOPT: parameter information can only be defined after the IPOPT algorithm objects have been provided to sIPOPT.\n\n");
+      return;
+    }
+
+    if (IsNull(ip_data_->curr())) {
+      jnlst_->Printf(J_ERROR, J_MAIN, "sIPOPT: parameter information cannot be provided before the first optimization.\n\n");
+      return;
+    }
+
+    SmartPtr<const DenseVectorSpace> x_owner_space_const = dynamic_cast<const DenseVectorSpace*>(GetRawPtr(ip_data_->curr()->x()->OwnerSpace()));
+    DenseVectorSpace& x_owner_space = const_cast<DenseVectorSpace&>(*x_owner_space_const); // hack!!!!
+    x_owner_space.SetIntegerMetaData("sens_state_1", sens_state);
+
+    SmartPtr<const DenseVectorSpace> y_c_owner_space_const = dynamic_cast<const DenseVectorSpace*>(GetRawPtr(ip_data_->curr()->y_c()->OwnerSpace()));
+    DenseVectorSpace& y_c_owner_space = const_cast<DenseVectorSpace&>(*y_c_owner_space_const); // hack!!!!
+    y_c_owner_space.SetIntegerMetaData("sens_init_constr", sens_init_constr);
+
+  }
 
 }

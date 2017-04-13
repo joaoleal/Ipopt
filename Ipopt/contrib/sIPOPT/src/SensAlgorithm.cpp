@@ -114,8 +114,7 @@ namespace Ipopt
     SmartPtr<const Vector> unscaled_x;
     SmartPtr<const Vector> unscaled_yc;
 
-    
-    
+
     SmartPtr<IteratesVector> trialcopy;
     for (Index step_i=0; step_i<n_sens_steps_; ++step_i) {
       sens_step_calc_->SetSchurDriver(driver_vec_[step_i]);
@@ -126,14 +125,14 @@ namespace Ipopt
       saved_sol->Print(Jnlst(),J_VECTOR,J_USER1,"sol_vec");
 
       // unscale solution...
-      UnScaleIteratesVector(&saved_sol) ;
+      UnScaleIteratesVector(&saved_sol);
 
       // update variables
       measurement_->SetSolution(step_i+1, saved_sol);
 
       // get sensitivity vector
-      GetDirectionalDerivatives() ;
-      
+      GetDirectionalDerivatives();
+
     }
 
     return retval;
