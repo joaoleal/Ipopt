@@ -2,7 +2,18 @@ This file contain the log of changes for the main development branch (trunk).
 More detailed information about incremental changes can be found in the
 history management of subversion.
 
-2017-02-xx releases/3.12.7
+2017-xx-yy releases/3.12.9
+        - fixed memory leak in MA86 interface (by mhahn) [r2700,#283]
+        - fixed handling of time limit when reoptimizing: CPU time spend
+          was accumulated when reoptimizing, while it should have been
+          reset for each solve (by paul-scott) [r2702]
+
+2017-06-12 releases/3.12.8
+        - add define for FORTRAN_INTEGER_TYPE to config_ipopt_default.h
+        - IpoptApplication::RethrowNonIpoptException() now returns whether
+          non-ipopt exceptions were rethrown before the method was called.
+
+2017-02-25 releases/3.12.7
         - removed compiler flag -pedantic-errors to avoid problems with some
           configure tests when using recent GCC versions
         - fixed rare bug in handling variable/constraint names in AmplTNLP
