@@ -9,6 +9,7 @@
 #ifndef __IPIPOPTDATA_HPP__
 #define __IPIPOPTDATA_HPP__
 
+#include <assert.h>
 #include "IpSymMatrix.hpp"
 #include "IpOptionsList.hpp"
 #include "IpIteratesVector.hpp"
@@ -57,7 +58,7 @@ namespace Ipopt
   private:
     /**@name Default Compiler Generated Methods
      * (Hidden to avoid implicit creation/calling).
-     * These methods are not implemented and 
+     * These methods are not implemented and
      * we do not want the compiler to implement
      * them for us, so we declare them private
      * and do not define them. This ensures that
@@ -115,7 +116,7 @@ namespace Ipopt
     SmartPtr<const IteratesVector> curr() const;
 
     /** Get the current point in a copied container that is non-const.
-    The entries in the container cannot be modified, but 
+    The entries in the container cannot be modified, but
     the container can be modified to point to new entries.
     */
     //    SmartPtr<IteratesVector> curr_container() const;
@@ -126,7 +127,7 @@ namespace Ipopt
 
     /** Get Trial point in a copied container that is non-const.
      *  The entries in the container can not be modified, but
-     *  the container can be modified to point to new entries. 
+     *  the container can be modified to point to new entries.
      */
     //SmartPtr<IteratesVector> trial_container() const;
 
@@ -161,7 +162,7 @@ namespace Ipopt
                                           const Vector& delta_v_U);
 
     /** ToDo: I may need to add versions of set_trial like the
-     *  following, but I am not sure 
+     *  following, but I am not sure
      */
     // void set_trial(const SmartPtr<IteratesVector>& trial_iterates);
     // void set_trial(SmartPtr<const IteratesVector>& trial_iterates);
@@ -663,7 +664,7 @@ namespace Ipopt
 
     /**@name Default Compiler Generated Methods
      * (Hidden to avoid implicit creation/calling).
-     * These methods are not implemented and 
+     * These methods are not implemented and
      * we do not want the compiler to implement
      * them for us, so we declare them private
      * and do not define them. This ensures that
